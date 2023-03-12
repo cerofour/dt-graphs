@@ -7,6 +7,8 @@ Stage 1: interpreta funciones matemáticas con operaciones aritméticas básicas
 	Gramática:
 	```
 	Function -> Expression
+				| AssignOperation
+	AssignOperation -> Identifier "=" Expression
 	Expression -> Term Expression'
 	Expression' -> + Term Expression'
 				| - Term Expression'
@@ -36,6 +38,7 @@ TokenType = Enum('TokenType',
 	'MinusSign',
 	'ProductSign',
 	'DivisionSign',
+	'EqualsSign',
 	'LParen',
 	'RParen',])
 
@@ -58,8 +61,12 @@ class Token:
 
 class Lexer:
 	def __init__(self):
+		# String con la expresión matemática a analizar, y su longitud (len)
 		self.src = None
 		self.src_len = 0
+
+		# Offset de lectura. Apunta al siguiente carcacter en self.src
+		# que TODAVíA no se ha leído
 		self.readoff = 0
 		self.tokens = []
 
@@ -69,16 +76,25 @@ class Lexer:
 		self.readoff = 0
 		self.tokens = []
 
-	def _can_read(self) -> bool:
-		return (self.readoff < self.src_len)
+	def _can_read(self, offset: int = 0) -> bool:
+		return (self.readoff + offset < self.src_len)
 	
+	# "CC" para "current character", regresa el caracter actual que el
+	# algoritmo está analizando
 	def _cc(self) -> chr :
 		assert(self._can_read())
 		return self.src[self.readoff]
 
+	# "cpast" para "Character past": Regresa el caracter "offset" posiciones
+	# después de self.readoff sin modificar el readoff
+	def _cpast(self, offset: int) -> chr:
+		assert(self._can_read(offset))
+		return self.src[self.readoff + offset]
+
 	def _advance(self, step=1):
 		self.readoff = self.readoff + step
 	
+	# TODO: Esto debe retornar un Token
 	def _read_number(self) -> str:
 		start = self.readoff
 		end = self.readoff
@@ -87,7 +103,18 @@ class Lexer:
 			end = end + 1
 
 		return self.src[start:end]
+
+	def _read_identifier(self) -> Token:
+		start = self.readoff
+		end = self.readoff
+
+		while self._can_read() and (self._cc().isalnum() or self._cc() == '_'):
+			self._advance()
+			end = end + 1
+
+		return Token(TokenType.Identifier, self.src[start:end])
 	
+	# TODO: El algoritmo tal vez es un poco ineficiente???
 	def get_tokens(self, src: str) -> List[Token]:
 		self._reset(src)
 
@@ -98,7 +125,8 @@ class Lexer:
 			'/': (TokenType.PlusSign, '/'),
 			'(': (TokenType.PlusSign, '('),
 			')': (TokenType.PlusSign, ')'),
-			'x': (TokenType.IdentifierX, 'x'),
+			'=': (TokenType.EqualsSign, '='),
+			# 'x': (TokenType.IdentifierX, 'x'),
 		}
 
 		while (self._can_read()):
@@ -114,10 +142,35 @@ class Lexer:
 			elif c.isdigit():
 				num = self._read_number()
 				self.tokens.append(Token(TokenType.Number, num))
+			elif c.isalpha():
+				# Lee el siguiente caracter para saber si estamos leyendo
+				# una variable X o un identificador que empiece con X
+				# TODO: Revisar si estas condiciones son completamente
+				# eficientes y no hay ningun edge case.
+				if c == 'x' and self._can_read(1):
+					peekedchr = self._cpast(1)
+					# El siguiente caracter no forma parte de un identificador, 
+					# así que solo es una X
+					if not peekedchr.isalnum() or peekedchr != '_':
+						self.tokens.append(Token(TokenType.IdentifierX, 'x'))
+						self._advance()
+
+				else:
+					t = self._read_identifier()
+					self.tokens.append(t)
+
 			else:
 				print("Invalid token", file=sys.stderror)
 
 		return self.tokens
+
+"""
+Parser LL(1). Crea un árbol de sintáxis que entienda la función ingresada por
+el usuario. Luego este árbol se debe compilar a datos que pyplot.plot()
+pueda recibir.
+"""
+class LL1Parser(object):
+	pass
 
 class TextProcessor:
     # def __init__(src: str):
@@ -128,5 +181,5 @@ class TextProcessor:
 
 # TextProcessor.text_to_npobject("x + 1")
 # k = Lexer()
-# x = k.get_tokens("4 + 1 * (3 + 2)")
+# x = k.get_tokens("204 * x + (3 - hola)")
 # print(x)
